@@ -1,8 +1,6 @@
-use walkdir::WalkDir;
-use sha2::{Sha256, Digest};
+use walkdir::{DirEntry, WalkDir};
 use std::fs::File;
 use std::io::Read;
-use hex;
 use std::time::Instant;
 use crc64;
 use std::collections::HashMap;
@@ -12,20 +10,10 @@ struct FileInfo {
     file_path: String,
     size: u64,
 }
-// Calculate sha256 from file
-fn sha256_from_file(file_path: &str) -> String {
-    let mut file = File::open(file_path).unwrap();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
-
-    let mut hasher = Sha256::new();
-    hasher.update(&buffer);
-    let hash = hasher.finalize();
-    hex::encode(hash)
-}
 
 // Calculate CRC64 from file
 fn crc64_from_file(file_path: &str) -> String {
+    println!("Processing: {}", file_path);
     let mut file = File::open(file_path).unwrap();
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
@@ -35,19 +23,24 @@ fn crc64_from_file(file_path: &str) -> String {
     format!("{:x}", cksum)
 }
 
+fn has_allowed_extension(entry: &DirEntry) -> bool {
+    let allowed_extensions = vec!["jpg", "jpeg", "png", "pdf"];
+    entry.path().extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| allowed_extensions.contains(&ext))
+        .unwrap_or(false)  // If no extension, return false
+}
 
 fn main() {
 
     // Hashmap with the crc and list of files
     let mut crc_map: HashMap<String, Vec<FileInfo>> = HashMap::new();
-    let path = ".";
+    let path = "/home/adpego/Documents";
     let now = Instant::now();
     let mut total_size = 0;
     let mut reduced_size = 0;
-    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_dir() {
-            continue;
-        }
+    let mut num_files = 0;
+    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()).filter(|entry| entry.file_type().is_file()).filter(|entry| has_allowed_extension(entry)) {
 
         let file_path = entry.path().to_str().unwrap();
 
@@ -58,6 +51,7 @@ fn main() {
         };
         total_size += file_info.size;
 
+        num_files += 1;
 
         crc_map.entry(crc64).or_insert(Vec::new()).push(file_info);
 
@@ -84,6 +78,6 @@ fn main() {
     println!("Total size: {}", human_bytes(total_size as f64));
     println!("Reduced size: {}", human_bytes(reduced_size as f64));
     println!("Size saved: {}", human_bytes((total_size - reduced_size) as f64));
-
+    println!("Number of files: {}", num_files);
     println!("\nElapsed: {:.2?}\n", elapsed);
 }
